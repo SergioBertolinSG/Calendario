@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Calendario
+Comment=Calendar with notes and Spanish holidays
+Exec=calendario
+Icon=${SNAP}/meta/gui/calendario.svg
+Type=Application
+Categories=Office;Calendar;
+StartupNotify=true

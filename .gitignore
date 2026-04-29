@@ -1,0 +1,29 @@
+# Build outputs
+/calendario
+*.o
+*.a
+*.so
+*.d
+
+# Snapcraft outputs
+*.snap
+*.snap-build
+*.snapcraft
+/prime/
+/stage/
+/parts/
+
+# Local runtime/config data
+/notas*.ini
+/festivos*.ini
+
+# Editor and OS noise
+*~
+*.swp
+*.swo
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
