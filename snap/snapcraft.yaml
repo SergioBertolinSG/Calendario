@@ -18,6 +18,14 @@ apps:
     extensions: [gnome]
     plugs:
       - network
+    slots:
+      - calendario-dbus
+
+slots:
+  calendario-dbus:
+    interface: dbus
+    bus: session
+    name: io.github.SergioBertolinSG.Calendario
 
 parts:
   calendario:
