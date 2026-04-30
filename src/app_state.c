@@ -3,6 +3,7 @@
 #include "date_utils.h"
 #include "paths.h"
 
+#include <json-glib/json-glib.h>
 #include <stdio.h>
 
 static const char *region_name_from_code(const char *code) {
@@ -125,128 +126,168 @@ static void save_holidays(AppState *state) {
     g_key_file_unref(key_file);
 }
 
-static char *extract_json_string(const char *object, const char *field) {
-    char *pattern = g_strdup_printf("\"%s\"[[:space:]]*:[[:space:]]*\"([^\"]*)\"", field);
-    GRegex *regex = g_regex_new(pattern, 0, 0, NULL);
-    GMatchInfo *match_info = NULL;
-    char *value = NULL;
+static char *build_regions_text(JsonObject *holiday) {
+    JsonNode *counties_node;
+    JsonArray *counties;
+    GString *builder;
+    guint length;
 
-    if (g_regex_match(regex, object, 0, &match_info)) {
-        value = g_match_info_fetch(match_info, 1);
+    counties_node = json_object_get_member(holiday, "counties");
+    if (counties_node == NULL || !JSON_NODE_HOLDS_ARRAY(counties_node)) {
+        return NULL;
     }
 
-    g_match_info_free(match_info);
-    g_regex_unref(regex);
-    g_free(pattern);
+    counties = json_node_get_array(counties_node);
+    length = json_array_get_length(counties);
+    if (length == 0) {
+        return NULL;
+    }
 
-    return value;
-}
+    builder = g_string_new(NULL);
+    for (guint i = 0; i < length; i++) {
+        JsonNode *code_node = json_array_get_element(counties, i);
+        const char *code;
 
-static char *extract_json_regions(const char *object) {
-    char *pattern = g_strdup("\"counties\"[[:space:]]*:[[:space:]]*\\[([^]]*)\\]");
-    GRegex *regex = g_regex_new(pattern, 0, 0, NULL);
-    GMatchInfo *match_info = NULL;
-    char *regions = NULL;
+        if (code_node == NULL || !JSON_NODE_HOLDS_VALUE(code_node)) {
+            continue;
+        }
 
-    if (g_regex_match(regex, object, 0, &match_info)) {
-        char *raw = g_match_info_fetch(match_info, 1);
-        GRegex *code_regex = g_regex_new("\"([^\"]+)\"", 0, 0, NULL);
-        GMatchInfo *code_info = NULL;
-        GString *builder = g_string_new(NULL);
-
-        g_regex_match(code_regex, raw, 0, &code_info);
-        while (g_match_info_matches(code_info)) {
-            char *code = g_match_info_fetch(code_info, 1);
-
-            if (builder->len > 0) {
-                g_string_append(builder, ", ");
-            }
-            g_string_append(builder, region_name_from_code(code));
-
-            g_free(code);
-            g_match_info_next(code_info, NULL);
+        code = json_node_get_string(code_node);
+        if (code == NULL || code[0] == '\0') {
+            continue;
         }
 
         if (builder->len > 0) {
-            regions = g_string_free(builder, FALSE);
-        } else {
-            g_string_free(builder, TRUE);
+            g_string_append(builder, ", ");
         }
-
-        g_match_info_free(code_info);
-        g_regex_unref(code_regex);
-        g_free(raw);
+        g_string_append(builder, region_name_from_code(code));
     }
 
-    g_match_info_free(match_info);
-    g_regex_unref(regex);
-    g_free(pattern);
+    if (builder->len == 0) {
+        g_string_free(builder, TRUE);
+        return NULL;
+    }
 
-    return regions;
+    return g_string_free(builder, FALSE);
+}
+
+static void parse_holiday_object(AppState *state, JsonObject *holiday) {
+    JsonNode *date_node = json_object_get_member(holiday, "date");
+    JsonNode *local_name_node = json_object_get_member(holiday, "localName");
+    const char *date;
+    const char *local_name;
+    char *regions;
+    int year = 0;
+    int month = 0;
+    int day = 0;
+
+    if (date_node == NULL ||
+        local_name_node == NULL ||
+        !JSON_NODE_HOLDS_VALUE(date_node) ||
+        !JSON_NODE_HOLDS_VALUE(local_name_node)) {
+        return;
+    }
+
+    date = json_node_get_string(date_node);
+    local_name = json_node_get_string(local_name_node);
+    if (date == NULL || local_name == NULL || local_name[0] == '\0') {
+        return;
+    }
+
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) == 3 &&
+        year >= state->year - 1 &&
+        year <= state->year + 1 &&
+        month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= calendario_days_in_month(year, month)) {
+        int key = calendario_date_key(year, month, day);
+
+        g_hash_table_replace(state->holidays, GINT_TO_POINTER(key), g_strdup(local_name));
+        regions = build_regions_text(holiday);
+        if (regions != NULL) {
+            g_hash_table_replace(state->holiday_regions, GINT_TO_POINTER(key), regions);
+        }
+    }
 }
 
 static void parse_holidays_json(AppState *state, const char *json) {
-    GRegex *object_regex = g_regex_new("\\{[^}]*\\}", 0, 0, NULL);
-    GMatchInfo *match_info = NULL;
+    JsonParser *parser = json_parser_new();
+    JsonNode *root;
+    JsonArray *holidays;
+    GError *error = NULL;
 
-    g_regex_match(object_regex, json, 0, &match_info);
-    while (g_match_info_matches(match_info)) {
-        char *object = g_match_info_fetch(match_info, 0);
-        char *date = extract_json_string(object, "date");
-        char *local_name = extract_json_string(object, "localName");
-        char *regions = extract_json_regions(object);
-
-        if (date != NULL && local_name != NULL) {
-            int year = 0;
-            int month = 0;
-            int day = 0;
-
-            if (sscanf(date, "%d-%d-%d", &year, &month, &day) == 3 &&
-                year >= state->year - 1 &&
-                year <= state->year + 1 &&
-                month >= 1 &&
-                month <= 12 &&
-                day >= 1 &&
-                day <= calendario_days_in_month(year, month)) {
-                int key = calendario_date_key(year, month, day);
-
-                g_hash_table_replace(state->holidays, GINT_TO_POINTER(key), g_strdup(local_name));
-                if (regions != NULL && regions[0] != '\0') {
-                    g_hash_table_replace(state->holiday_regions, GINT_TO_POINTER(key), g_strdup(regions));
-                }
-            }
-        }
-
-        g_free(regions);
-        g_free(local_name);
-        g_free(date);
-        g_free(object);
-        g_match_info_next(match_info, NULL);
+    if (!json_parser_load_from_data(parser, json, -1, &error)) {
+        g_printerr("No se pudieron leer los festivos descargados: %s\n", error->message);
+        g_clear_error(&error);
+        g_object_unref(parser);
+        return;
     }
 
-    g_match_info_free(match_info);
-    g_regex_unref(object_regex);
+    root = json_parser_get_root(parser);
+    if (root == NULL || !JSON_NODE_HOLDS_ARRAY(root)) {
+        g_object_unref(parser);
+        return;
+    }
+
+    holidays = json_node_get_array(root);
+    for (guint i = 0; i < json_array_get_length(holidays); i++) {
+        JsonNode *holiday_node = json_array_get_element(holidays, i);
+
+        if (holiday_node != NULL && JSON_NODE_HOLDS_OBJECT(holiday_node)) {
+            parse_holiday_object(state, json_node_get_object(holiday_node));
+        }
+    }
+
+    g_object_unref(parser);
+}
+
+static char *resolve_curl_path(void) {
+    const char *snap = g_getenv("SNAP");
+    const char *candidates[] = {
+        "/usr/bin/curl",
+        "/bin/curl",
+        NULL
+    };
+
+    if (snap != NULL && snap[0] != '\0') {
+        char *snap_curl = g_build_filename(snap, "usr", "bin", "curl", NULL);
+
+        if (g_file_test(snap_curl, G_FILE_TEST_IS_EXECUTABLE)) {
+            return snap_curl;
+        }
+        g_free(snap_curl);
+    }
+
+    for (int i = 0; candidates[i] != NULL; i++) {
+        if (g_file_test(candidates[i], G_FILE_TEST_IS_EXECUTABLE)) {
+            return g_strdup(candidates[i]);
+        }
+    }
+
+    return NULL;
 }
 
 static gboolean fetch_holidays_for_year(AppState *state, int year, gboolean clear_before_parse) {
     char *url = g_strdup_printf("https://date.nager.at/api/v3/publicholidays/%d/ES", year);
-    char **env = g_get_environ();
-    char *argv[] = {"curl", "-fsSL", "--max-time", "5", url, NULL};
+    char *curl_path = resolve_curl_path();
+    char *argv[] = {curl_path, "-fsSL", "--max-time", "5", url, NULL};
     char *stdout_data = NULL;
     char *stderr_data = NULL;
     int exit_status = 0;
     GError *error = NULL;
 
-    env = g_environ_unsetenv(env, "LD_PRELOAD");
-    env = g_environ_unsetenv(env, "FAKETIME");
-    env = g_environ_unsetenv(env, "FAKETIME_TIMESTAMP_FILE");
-    env = g_environ_unsetenv(env, "FAKETIME_NO_CACHE");
+    if (curl_path == NULL) {
+        g_printerr("No se pudieron descargar los festivos: no se encontro curl\n");
+        g_free(url);
+        return FALSE;
+    }
 
-    if (!g_spawn_sync(NULL, argv, env, G_SPAWN_SEARCH_PATH, NULL, NULL, &stdout_data, &stderr_data, &exit_status, &error)) {
+    if (!g_spawn_sync(NULL, argv, NULL, 0, NULL, NULL, &stdout_data, &stderr_data, &exit_status, &error)) {
         g_printerr("No se pudieron descargar los festivos: %s\n", error != NULL ? error->message : "error desconocido");
         g_clear_error(&error);
         g_free(stderr_data);
-        g_strfreev(env);
+        g_free(curl_path);
         g_free(url);
         return FALSE;
     }
@@ -265,7 +306,7 @@ static gboolean fetch_holidays_for_year(AppState *state, int year, gboolean clea
 
     g_free(stdout_data);
     g_free(stderr_data);
-    g_strfreev(env);
+    g_free(curl_path);
     g_free(url);
 
     return success;

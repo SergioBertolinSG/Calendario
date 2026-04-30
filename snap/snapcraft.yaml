@@ -4,8 +4,9 @@ version: '0.1'
 summary: GTK calendar with notes
 description: |
   Calendar app with persistent notes and Spanish public holidays.
+  Spanish public holidays are fetched from Nager Date on startup and cached locally.
 
-grade: devel
+grade: stable
 confinement: strict
 
 apps:
@@ -24,8 +25,10 @@ parts:
       - make
       - pkg-config
       - libgtk-4-dev
+      - libjson-glib-dev
     stage-packages:
       - curl
+      - libjson-glib-1.0-0
     override-build: |
       make
       install -Dm755 calendario "$CRAFT_PART_INSTALL/usr/bin/calendario"

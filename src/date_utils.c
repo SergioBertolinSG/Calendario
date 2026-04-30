@@ -40,20 +40,8 @@ void calendario_format_date_key(int key, char *buffer, gsize size) {
 }
 
 int calendario_current_year(void) {
-    const char *year_override = g_getenv("CALENDARIO_YEAR");
     GDateTime *now = g_date_time_new_now_local();
     int year = 1;
-
-    if (year_override != NULL && year_override[0] != '\0') {
-        int parsed_year = (int)g_ascii_strtoll(year_override, NULL, 10);
-
-        if (parsed_year >= 1 && parsed_year <= 9999) {
-            if (now != NULL) {
-                g_date_time_unref(now);
-            }
-            return parsed_year;
-        }
-    }
 
     if (now != NULL) {
         year = g_date_time_get_year(now);
