@@ -36,11 +36,11 @@ Build and install locally:
 
 ```sh
 snapcraft
-sudo snap install calendario_*.snap --dangerous
-calendario
+sudo snap install calendario-es_*.snap --dangerous
+calendario-es
 ```
 
-Click a day to add or edit a note. Notes are restored the next time the app opens. When running as a snap, notes and cached holidays are stored under the snap sandbox user area, usually `~/snap/calendario/common/calendario/`. Local development builds still use your normal user config directory.
+Click a day to add or edit a note. Notes are restored the next time the app opens. When running as a snap, notes and cached holidays are stored under the snap sandbox user area, usually `~/snap/calendario-es/common/calendario/`. Local development builds still use your normal user config directory.
 
 The calendar shows 14 months: December from the previous year, all 12 months of the selected/current year, and January from the next year.
 

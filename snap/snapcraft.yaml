@@ -1,4 +1,4 @@
-name: calendario
+name: calendario-es
 base: core24
 version: '1.0'
 summary: Spanish calendar with notes using GTK
@@ -12,10 +12,17 @@ title: Calendario
 grade: stable
 confinement: strict
 
+lint:
+  ignore:
+    - library:
+        - usr/lib/**/libproxy.so*
+
 apps:
-  calendario:
+  calendario-es:
     command: usr/bin/calendario
     extensions: [gnome]
+    environment:
+      LD_LIBRARY_PATH: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libproxy:$LD_LIBRARY_PATH
     plugs:
       - network
     slots:
@@ -40,6 +47,7 @@ parts:
     stage-packages:
       - curl
       - libjson-glib-1.0-0
+      - libproxy1v5
     override-build: |
       make
       install -Dm755 calendario "$CRAFT_PART_INSTALL/usr/bin/calendario"
