@@ -4,7 +4,7 @@
 #include <gtk/gtk.h>
 
 int main(int argc, char **argv) {
-    GtkApplication *app = gtk_application_new("io.github.SergioBertolinSG.Calendario", G_APPLICATION_DEFAULT_FLAGS);
+    GtkApplication *app = gtk_application_new("io.github.SergioBertolinSG.Calendario", G_APPLICATION_NON_UNIQUE);
     AppState *state = app_state_new();
     int status;
 

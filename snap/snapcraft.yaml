@@ -25,14 +25,6 @@ apps:
       LD_LIBRARY_PATH: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libproxy:$LD_LIBRARY_PATH
     plugs:
       - network
-    slots:
-      - calendario-dbus
-
-slots:
-  calendario-dbus:
-    interface: dbus
-    bus: session
-    name: io.github.SergioBertolinSG.Calendario
 
 parts:
   calendario:
